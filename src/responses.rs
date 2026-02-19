@@ -26,7 +26,6 @@ pub struct MinecraftResponse {
     pub players: Vec<ValuePointInt>,
 }
 
-
 #[derive(Serialize)]
 pub struct CurrentStatusResponse {
     pub ecs_cpu_avg: f64,

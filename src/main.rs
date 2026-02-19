@@ -1,18 +1,24 @@
+mod generate_leveled_sql;
 mod generate_sql;
 mod responses;
-mod generate_leveled_sql;
 
-use sqlx::mysql::MySqlPoolOptions;
-use axum::{routing::get, Router, response::{Json, IntoResponse}, http::StatusCode, extract::{State, Query, }};
-use serde::Deserialize;
-use std::fs;
-use sqlx::{MySqlPool, Row};
-use generate_sql::{CompressionType, DataType};
-use crate::responses::{ValuePointFloat, ValuePointInt};
-use rust_decimal::prelude::{FromPrimitive, ToPrimitive};
-use sqlx::types::BigDecimal;
 use crate::generate_leveled_sql::gl_current_general;
-use tower_http::cors::{CorsLayer, Any};
+use crate::responses::{ValuePointFloat, ValuePointInt};
+use axum::{
+    Router,
+    extract::{Query, State},
+    http::StatusCode,
+    response::{IntoResponse, Json},
+    routing::get,
+};
+use generate_sql::{CompressionType, DataType};
+use rust_decimal::prelude::{FromPrimitive, ToPrimitive};
+use serde::Deserialize;
+use sqlx::mysql::MySqlPoolOptions;
+use sqlx::types::BigDecimal;
+use sqlx::{MySqlPool, Row};
+use std::fs;
+use tower_http::cors::{Any, CorsLayer};
 
 #[derive(Clone, Deserialize)]
 struct AppConfig {
@@ -53,7 +59,10 @@ fn auto_round(x: f64) -> f64 {
         -1.0
     }
 }
-async fn root_stat_ecs(State(state): State<AppState>, Query(params): Query<QueryParams>) -> impl IntoResponse {
+async fn root_stat_ecs(
+    State(state): State<AppState>,
+    Query(params): Query<QueryParams>,
+) -> impl IntoResponse {
     let level = params.level;
     let pool = &state.pool;
 
@@ -83,22 +92,45 @@ async fn root_stat_ecs(State(state): State<AppState>, Query(params): Query<Query
         let time: String = row.try_get("create_time").unwrap_or("").to_string();
         let cpu = row.try_get("cpu_usage").unwrap_or(-1.0);
         let mem = row.try_get("memory_usage").unwrap_or(-1.0);
-        let mut net_send_rate = row.try_get("net_send_rate").unwrap_or(BigDecimal::from_f64(-1.0).unwrap()).to_f64().unwrap();
-        let mut net_recv_rate = row.try_get("net_recv_rate").unwrap_or(BigDecimal::from_f64(-1.0).unwrap()).to_f64().unwrap();
+        let mut net_send_rate = row
+            .try_get("net_send_rate")
+            .unwrap_or(BigDecimal::from_f64(-1.0).unwrap())
+            .to_f64()
+            .unwrap();
+        let mut net_recv_rate = row
+            .try_get("net_recv_rate")
+            .unwrap_or(BigDecimal::from_f64(-1.0).unwrap())
+            .to_f64()
+            .unwrap();
 
         net_send_rate = auto_round(net_send_rate);
         net_recv_rate = auto_round(net_recv_rate);
-        
-        resp.cpustat.push(ValuePointFloat {time: time.clone(), value: cpu});
-        resp.memstat.push(ValuePointFloat {time: time.clone(), value: mem});
-        resp.netsendstat.push(ValuePointFloat {time: time.clone(), value: net_send_rate});
-        resp.netrecvstat.push(ValuePointFloat {time, value: net_recv_rate});
+
+        resp.cpustat.push(ValuePointFloat {
+            time: time.clone(),
+            value: cpu,
+        });
+        resp.memstat.push(ValuePointFloat {
+            time: time.clone(),
+            value: mem,
+        });
+        resp.netsendstat.push(ValuePointFloat {
+            time: time.clone(),
+            value: net_send_rate,
+        });
+        resp.netrecvstat.push(ValuePointFloat {
+            time,
+            value: net_recv_rate,
+        });
     }
 
     (StatusCode::OK, Json(resp)).into_response()
 }
 
-async fn root_stat_physical(State(state): State<AppState>, Query(params): Query<QueryParams>) -> impl IntoResponse {
+async fn root_stat_physical(
+    State(state): State<AppState>,
+    Query(params): Query<QueryParams>,
+) -> impl IntoResponse {
     let level = params.level;
     let pool = &state.pool;
 
@@ -128,24 +160,47 @@ async fn root_stat_physical(State(state): State<AppState>, Query(params): Query<
         let time = row.try_get("create_time").unwrap_or("").to_string();
         let cpu = row.try_get("cpu_usage").unwrap_or(-1.0);
         let mem = row.try_get("memory_usage").unwrap_or(-1.0);
-        let mut net_send_rate = row.try_get("net_send_rate").unwrap_or(BigDecimal::from_f64(-1.0).unwrap()).to_f64().unwrap();
-        let mut net_recv_rate = row.try_get("net_recv_rate").unwrap_or(BigDecimal::from_f64(-1.0).unwrap()).to_f64().unwrap();
+        let mut net_send_rate = row
+            .try_get("net_send_rate")
+            .unwrap_or(BigDecimal::from_f64(-1.0).unwrap())
+            .to_f64()
+            .unwrap();
+        let mut net_recv_rate = row
+            .try_get("net_recv_rate")
+            .unwrap_or(BigDecimal::from_f64(-1.0).unwrap())
+            .to_f64()
+            .unwrap();
         if net_send_rate != -1.0 {
             net_send_rate /= 1048576.0;
         }
         if net_recv_rate != -1.0 {
             net_recv_rate /= 1048576.0;
         }
-        resp.cpustat.push(ValuePointFloat {time: time.clone(), value: cpu});
-        resp.memstat.push(ValuePointFloat {time: time.clone(), value: mem});
-        resp.netsendstat.push(ValuePointFloat {time: time.clone(), value: net_send_rate});
-        resp.netrecvstat.push(ValuePointFloat {time, value: net_recv_rate});
+        resp.cpustat.push(ValuePointFloat {
+            time: time.clone(),
+            value: cpu,
+        });
+        resp.memstat.push(ValuePointFloat {
+            time: time.clone(),
+            value: mem,
+        });
+        resp.netsendstat.push(ValuePointFloat {
+            time: time.clone(),
+            value: net_send_rate,
+        });
+        resp.netrecvstat.push(ValuePointFloat {
+            time,
+            value: net_recv_rate,
+        });
     }
 
     (StatusCode::OK, Json(resp)).into_response()
 }
 
-async fn root_stat_mc(State(state): State<AppState>, Query(params): Query<QueryParams>) -> impl IntoResponse {
+async fn root_stat_mc(
+    State(state): State<AppState>,
+    Query(params): Query<QueryParams>,
+) -> impl IntoResponse {
     let level = params.level;
     let pool = &state.pool;
 
@@ -173,14 +228,23 @@ async fn root_stat_mc(State(state): State<AppState>, Query(params): Query<QueryP
         let time = row.try_get("create_time").unwrap_or("").to_string();
         let latency = row.try_get("latency").unwrap_or(-1.0);
         let players = row.try_get("players").unwrap_or(-1);
-        resp.latency.push(ValuePointFloat {time: time.clone(), value: latency});
-        resp.players.push(ValuePointInt {time, value: players});
+        resp.latency.push(ValuePointFloat {
+            time: time.clone(),
+            value: latency,
+        });
+        resp.players.push(ValuePointInt {
+            time,
+            value: players,
+        });
     }
 
     (StatusCode::OK, Json(resp)).into_response()
 }
 
-async fn root_stat_sysytemdirect(State(state): State<AppState>, Query(params): Query<QueryParams>) -> impl IntoResponse {
+async fn root_stat_sysytemdirect(
+    State(state): State<AppState>,
+    Query(params): Query<QueryParams>,
+) -> impl IntoResponse {
     let level = params.level;
     let pool = &state.pool;
 
@@ -208,14 +272,23 @@ async fn root_stat_sysytemdirect(State(state): State<AppState>, Query(params): Q
         let time = row.try_get("create_time").unwrap_or("").to_string();
         let latency = row.try_get("latency").unwrap_or(-1.0);
         let players = row.try_get("players").unwrap_or(-1);
-        resp.latency.push(ValuePointFloat {time: time.clone(), value: latency});
-        resp.players.push(ValuePointInt {time, value: players});
+        resp.latency.push(ValuePointFloat {
+            time: time.clone(),
+            value: latency,
+        });
+        resp.players.push(ValuePointInt {
+            time,
+            value: players,
+        });
     }
 
     (StatusCode::OK, Json(resp)).into_response()
 }
 
-async fn root_stat_trc(State(state): State<AppState>, Query(params): Query<QueryParams>) -> impl IntoResponse {
+async fn root_stat_trc(
+    State(state): State<AppState>,
+    Query(params): Query<QueryParams>,
+) -> impl IntoResponse {
     let level = params.level;
     let pool = &state.pool;
 
@@ -243,48 +316,203 @@ async fn root_stat_trc(State(state): State<AppState>, Query(params): Query<Query
         let time = row.try_get("create_time").unwrap_or("").to_string();
         let latency = row.try_get("latency").unwrap_or(-1.0);
         let players = row.try_get("players").unwrap_or(-1);
-        resp.latency.push(ValuePointFloat {time: time.clone(), value: latency});
-        resp.players.push(ValuePointInt {time, value: players});
+        resp.latency.push(ValuePointFloat {
+            time: time.clone(),
+            value: latency,
+        });
+        resp.players.push(ValuePointInt {
+            time,
+            value: players,
+        });
     }
 
     (StatusCode::OK, Json(resp)).into_response()
 }
 
 async fn get_value(pool: &MySqlPool, sql: &str) -> Result<f64, sqlx::Error> {
-    let value = sqlx::query_scalar::<_, i64>(sql)
-        .fetch_one(pool)
-        .await;
+    let value = sqlx::query_scalar::<_, i64>(sql).fetch_one(pool).await;
     match value {
         Ok(v) => Ok(v as f64),
         Err(_) => {
-            let v = sqlx::query_scalar::<_, f64>(sql)
-                .fetch_one(pool)
-                .await?;
+            let v = sqlx::query_scalar::<_, f64>(sql).fetch_one(pool).await?;
             Ok(v)
         }
     }
 }
 
-async fn root_stat_current(State(state): State<AppState>, Query(params): Query<QueryParams>) -> impl IntoResponse {
+async fn root_stat_current(
+    State(state): State<AppState>,
+    Query(params): Query<QueryParams>,
+) -> impl IntoResponse {
     let level = params.level;
     let pool = &state.pool;
 
-    let sql_ecs_cpu_avg = match gl_current_general(CompressionType::Average, DataType::CPU, "ecs_stat", level) {Ok(a) => a, Err(e) => {eprintln!("{}", e); return (StatusCode::BAD_REQUEST, "Invalid level").into_response()}};
-    let sql_ecs_cpu_stv = match gl_current_general(CompressionType::StandardDeviation, DataType::CPU, "ecs_stat", level) {Ok(a) => a, Err(e) => {eprintln!("{}", e); return (StatusCode::BAD_REQUEST, "Invalid level").into_response()}};
-    let sql_ecs_mem_avg = match gl_current_general(CompressionType::Average, DataType::Memory, "ecs_stat", level) {Ok(a) => a, Err(e) => {eprintln!("{}", e); return (StatusCode::BAD_REQUEST, "Invalid level").into_response()}};
-    let sql_ecs_mem_stv = match gl_current_general(CompressionType::StandardDeviation, DataType::Memory, "ecs_stat", level) {Ok(a) => a, Err(e) => {eprintln!("{}", e); return (StatusCode::BAD_REQUEST, "Invalid level").into_response()}};
-    let sql_phy_cpu_avg = match gl_current_general(CompressionType::Average, DataType::CPU, "physical_stat", level) {Ok(a) => a, Err(e) => {eprintln!("{}", e); return (StatusCode::BAD_REQUEST, "Invalid level").into_response()}};
-    let sql_phy_cpu_stv = match gl_current_general(CompressionType::StandardDeviation, DataType::CPU, "physical_stat", level) {Ok(a) => a, Err(e) => {eprintln!("{}", e); return (StatusCode::BAD_REQUEST, "Invalid level").into_response()}};
-    let sql_phy_mem_avg = match gl_current_general(CompressionType::Average, DataType::Memory, "physical_stat", level) {Ok(a) => a, Err(e) => {eprintln!("{}", e); return (StatusCode::BAD_REQUEST, "Invalid level").into_response()}};
-    let sql_phy_mem_stv = match gl_current_general(CompressionType::StandardDeviation, DataType::Memory, "physical_stat", level) {Ok(a) => a, Err(e) => {eprintln!("{}", e); return (StatusCode::BAD_REQUEST, "Invalid level").into_response()}};
-    let sql_mc_lac_avg = match gl_current_general(CompressionType::Average, DataType::Latency, "mcserver_stat", level) {Ok(a) => a, Err(e) => {eprintln!("{}", e); return (StatusCode::BAD_REQUEST, "Invalid level").into_response()}};
-    let sql_mc_lac_stv = match gl_current_general(CompressionType::StandardDeviation, DataType::Latency, "mcserver_stat", level) {Ok(a) => a, Err(e) => {eprintln!("{}", e); return (StatusCode::BAD_REQUEST, "Invalid level").into_response()}};
+    let sql_ecs_cpu_avg =
+        match gl_current_general(CompressionType::Average, DataType::CPU, "ecs_stat", level) {
+            Ok(a) => a,
+            Err(e) => {
+                eprintln!("{}", e);
+                return (StatusCode::BAD_REQUEST, "Invalid level").into_response();
+            }
+        };
+    let sql_ecs_cpu_stv = match gl_current_general(
+        CompressionType::StandardDeviation,
+        DataType::CPU,
+        "ecs_stat",
+        level,
+    ) {
+        Ok(a) => a,
+        Err(e) => {
+            eprintln!("{}", e);
+            return (StatusCode::BAD_REQUEST, "Invalid level").into_response();
+        }
+    };
+    let sql_ecs_mem_avg = match gl_current_general(
+        CompressionType::Average,
+        DataType::Memory,
+        "ecs_stat",
+        level,
+    ) {
+        Ok(a) => a,
+        Err(e) => {
+            eprintln!("{}", e);
+            return (StatusCode::BAD_REQUEST, "Invalid level").into_response();
+        }
+    };
+    let sql_ecs_mem_stv = match gl_current_general(
+        CompressionType::StandardDeviation,
+        DataType::Memory,
+        "ecs_stat",
+        level,
+    ) {
+        Ok(a) => a,
+        Err(e) => {
+            eprintln!("{}", e);
+            return (StatusCode::BAD_REQUEST, "Invalid level").into_response();
+        }
+    };
+    let sql_phy_cpu_avg = match gl_current_general(
+        CompressionType::Average,
+        DataType::CPU,
+        "physical_stat",
+        level,
+    ) {
+        Ok(a) => a,
+        Err(e) => {
+            eprintln!("{}", e);
+            return (StatusCode::BAD_REQUEST, "Invalid level").into_response();
+        }
+    };
+    let sql_phy_cpu_stv = match gl_current_general(
+        CompressionType::StandardDeviation,
+        DataType::CPU,
+        "physical_stat",
+        level,
+    ) {
+        Ok(a) => a,
+        Err(e) => {
+            eprintln!("{}", e);
+            return (StatusCode::BAD_REQUEST, "Invalid level").into_response();
+        }
+    };
+    let sql_phy_mem_avg = match gl_current_general(
+        CompressionType::Average,
+        DataType::Memory,
+        "physical_stat",
+        level,
+    ) {
+        Ok(a) => a,
+        Err(e) => {
+            eprintln!("{}", e);
+            return (StatusCode::BAD_REQUEST, "Invalid level").into_response();
+        }
+    };
+    let sql_phy_mem_stv = match gl_current_general(
+        CompressionType::StandardDeviation,
+        DataType::Memory,
+        "physical_stat",
+        level,
+    ) {
+        Ok(a) => a,
+        Err(e) => {
+            eprintln!("{}", e);
+            return (StatusCode::BAD_REQUEST, "Invalid level").into_response();
+        }
+    };
+    let sql_mc_lac_avg = match gl_current_general(
+        CompressionType::Average,
+        DataType::Latency,
+        "mcserver_stat",
+        level,
+    ) {
+        Ok(a) => a,
+        Err(e) => {
+            eprintln!("{}", e);
+            return (StatusCode::BAD_REQUEST, "Invalid level").into_response();
+        }
+    };
+    let sql_mc_lac_stv = match gl_current_general(
+        CompressionType::StandardDeviation,
+        DataType::Latency,
+        "mcserver_stat",
+        level,
+    ) {
+        Ok(a) => a,
+        Err(e) => {
+            eprintln!("{}", e);
+            return (StatusCode::BAD_REQUEST, "Invalid level").into_response();
+        }
+    };
     let sql_mc_cur_ply = generate_sql::generate_current_players("mcserver_stat");
-    let sql_sds_lac_avg = match gl_current_general(CompressionType::Average, DataType::Latency, "sysytemdirect_stat", level) {Ok(a) => a, Err(e) => {eprintln!("{}", e); return (StatusCode::BAD_REQUEST, "Invalid level").into_response()}};
-    let sql_sds_lac_stv = match gl_current_general(CompressionType::StandardDeviation, DataType::Latency, "sysytemdirect_stat", level) {Ok(a) => a, Err(e) => {eprintln!("{}", e); return (StatusCode::BAD_REQUEST, "Invalid level").into_response()}};
+    let sql_sds_lac_avg = match gl_current_general(
+        CompressionType::Average,
+        DataType::Latency,
+        "sysytemdirect_stat",
+        level,
+    ) {
+        Ok(a) => a,
+        Err(e) => {
+            eprintln!("{}", e);
+            return (StatusCode::BAD_REQUEST, "Invalid level").into_response();
+        }
+    };
+    let sql_sds_lac_stv = match gl_current_general(
+        CompressionType::StandardDeviation,
+        DataType::Latency,
+        "sysytemdirect_stat",
+        level,
+    ) {
+        Ok(a) => a,
+        Err(e) => {
+            eprintln!("{}", e);
+            return (StatusCode::BAD_REQUEST, "Invalid level").into_response();
+        }
+    };
     let sql_sds_cur_ply = generate_sql::generate_current_players("sysytemdirect_stat");
-    let sql_trc_lac_avg = match gl_current_general(CompressionType::Average, DataType::Latency, "trc_stat", level) {Ok(a) => a, Err(e) => {eprintln!("{}", e); return (StatusCode::BAD_REQUEST, "Invalid level").into_response()}};
-    let sql_trc_lac_stv = match gl_current_general(CompressionType::StandardDeviation, DataType::Latency, "trc_stat", level) {Ok(a) => a, Err(e) => {eprintln!("{}", e); return (StatusCode::BAD_REQUEST, "Invalid level").into_response()}};
+    let sql_trc_lac_avg = match gl_current_general(
+        CompressionType::Average,
+        DataType::Latency,
+        "trc_stat",
+        level,
+    ) {
+        Ok(a) => a,
+        Err(e) => {
+            eprintln!("{}", e);
+            return (StatusCode::BAD_REQUEST, "Invalid level").into_response();
+        }
+    };
+    let sql_trc_lac_stv = match gl_current_general(
+        CompressionType::StandardDeviation,
+        DataType::Latency,
+        "trc_stat",
+        level,
+    ) {
+        Ok(a) => a,
+        Err(e) => {
+            eprintln!("{}", e);
+            return (StatusCode::BAD_REQUEST, "Invalid level").into_response();
+        }
+    };
     let sql_trc_cur_ply = generate_sql::generate_current_players("trc_stat");
 
     let sqls = vec![
@@ -307,19 +535,14 @@ async fn root_stat_current(State(state): State<AppState>, Query(params): Query<Q
         sql_trc_cur_ply,
     ];
 
-
-
     let mut results = Vec::with_capacity(sqls.len());
 
     for sql in sqls {
         let value: f64 = match get_value(&pool, sql.as_str()).await {
-            Ok(a) => {
-                advanced_round(a, 3)
-            },
+            Ok(a) => advanced_round(a, 3),
             Err(e) => {
                 eprintln!("{}", e);
                 -1.0
-
             }
         };
         results.push(value);
@@ -350,11 +573,15 @@ async fn root_stat_current(State(state): State<AppState>, Query(params): Query<Q
 
 #[tokio::main]
 async fn main() {
-
     let content = fs::read_to_string("config.json").expect("Failed to read config.json");
     let config: AppConfig = serde_json::from_str(content.as_str()).unwrap();
 
-    let pool = MySqlPoolOptions::new().max_connections(10).min_connections(5).connect(config.db_url.as_str()).await.expect("Failed to connect to database");
+    let pool = MySqlPoolOptions::new()
+        .max_connections(10)
+        .min_connections(5)
+        .connect(config.db_url.as_str())
+        .await
+        .expect("Failed to connect to database");
 
     let app_state = AppState {
         pool,
@@ -369,7 +596,14 @@ async fn main() {
         .route("/stat/trc", get(root_stat_trc))
         .route("/stat/current", get(root_stat_current))
         .with_state(app_state)
-        .layer(CorsLayer::new().allow_origin(Any).allow_methods(Any).allow_headers(Any));
-    let listener = tokio::net::TcpListener::bind(config.bing_addr).await.unwrap();
+        .layer(
+            CorsLayer::new()
+                .allow_origin(Any)
+                .allow_methods(Any)
+                .allow_headers(Any),
+        );
+    let listener = tokio::net::TcpListener::bind(config.bing_addr)
+        .await
+        .unwrap();
     axum::serve(listener, app).await.unwrap();
 }
