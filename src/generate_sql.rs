@@ -59,6 +59,7 @@ pub enum DataType{
 pub fn generate_current_general(compression_type: CompressionType, data_type: DataType, table: &str, interval: i32) -> String {
     let algorithm;
     let field;
+    let mut extra = "".to_string();
     match compression_type {
         CompressionType::Average => algorithm = "AVG",
         CompressionType::StandardDeviation => algorithm = "STDDEV"
@@ -66,9 +67,14 @@ pub fn generate_current_general(compression_type: CompressionType, data_type: Da
     match data_type {
         DataType::CPU => field = "cpu_usage",
         DataType::Memory => field = "memory_usage",
-        DataType::Latency => field = "latency",
+        DataType::Latency => {
+            extra = "AND latency != 5000 ".to_string();
+            field = "latency";
+        },
     }
-    format!("SELECT {algo}({type}) FROM {table} WHERE create_time > DATE_SUB(NOW(), INTERVAL {interval} SECOND) AND deleted = 0;",
+
+
+    format!("SELECT {algo}({type}) FROM {table} WHERE create_time > DATE_SUB(NOW(), INTERVAL {interval} SECOND) {extra}AND deleted = 0;",
             algo=algorithm, type=field, table=table, interval=interval)
 }
 pub fn generate_current_players(table: &str) -> String {
